@@ -13,8 +13,8 @@ Install-Module Microsoft.Graph -Scope CurrentUser -Force
 - Exemplo:
 ```csv
 Email
-fulano@educararaquara.com
-ciclano@educararaquara.com
+fulano@email.com
+ciclano@eemail.com
 ```
 
 ---
@@ -171,29 +171,29 @@ Todos os scripts geram 3 tipos de log:
 
 ## 🎯 Workflow Completo Recomendado
 
-### **Semana 1:**
+### Alterar licenças e Desabilitar contas
 ```powershell
-# 1. Alterar licenças (10k)
+# 1. Alterar licenças 
 .\1-Alterar-Licencas.ps1 -CsvPath "alterar.csv" -DryRun  # Teste
 .\1-Alterar-Licencas.ps1 -CsvPath "alterar.csv"         # Executar
 
-# 2. Desabilitar contas (15k)
+# 2. Desabilitar contas 
 .\2-Desabilitar-Contas.ps1 -CsvPath "desabilitar.csv" -DryRun  # Teste
 .\2-Desabilitar-Contas.ps1 -CsvPath "desabilitar.csv"         # Executar
 ```
 
-### **Semana 2-3:**
+### 
 - ⏰ **Aguardar feedback**
 - Reativar contas se necessário
 
-### **Semana 3:**
+### Remover licenças
 ```powershell
 # 3. Remover licenças
 .\3-Remover-Licencas.ps1 -CsvPath "desabilitar.csv" -DryRun  # Teste
 .\3-Remover-Licencas.ps1 -CsvPath "desabilitar.csv"         # Executar
 ```
 
-### **Semana 4-5:**
+### Excluir definitivamente
 - ⏰ **Última chance para reclamações**
 
 ### **Semana 5:**
@@ -238,11 +238,16 @@ Todos os scripts geram 3 tipos de log:
 
 ## 📞 Comandos Úteis
 
-**Verificar usuário específico:**
+**Verificar SKU de um usuário específico:**
 ```powershell
 Connect-MgGraph -Scopes "User.Read.All"
 Get-MgUser -Filter "userPrincipalName eq 'fulano@educararaquara.com'" | 
   Select-Object DisplayName, AccountEnabled, AssignedLicenses
+```
+
+**Verificar SKUs das licenças:**
+```powershell
+Get-MgSubscribedSku | Select-Object SkuPartNumber, SkuId | Format-Table
 ```
 
 **Reativar conta:**
