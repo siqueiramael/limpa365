@@ -17,7 +17,7 @@ param(
 
 # --- Configuracao das Licencas ---
 $SKU_EXCHANGE_STUDENT = "ad2fe44a-915d-4e2b-ade1-6766d50a9d9c"  # EXCHANGESTANDARD_STUDENT
-$SKU_OFFICE_FACULTY = "78e66a63-337a-4a9a-8959-41c6654dfb56"   # STANDARDWOFFPACK_FACULTY
+$SKU_OFFICE_FACULTY = "94763226-9b3c-4e75-a931-5c89701abe66"   # STANDARDWOFFPACK_FACULTY
 
 # --- Validar arquivo CSV ---
 if (!(Test-Path $CsvPath)) {
@@ -167,3 +167,4 @@ if ($DryRun) {
 # --- Desconectar ---
 Disconnect-MgGraph | Out-Null
 Write-Host "`n[OK] Desconectado do Microsoft Graph" -ForegroundColor Green
+
