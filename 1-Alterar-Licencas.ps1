@@ -1,5 +1,5 @@
 # ================================================================
-# Script 1: Alterar Licencas em Massa
+# Script 1: Alterar Licencas em Massa (CORRIGIDO)
 # Descricao: Remove TODAS as licencas antigas e adiciona as novas
 # Input: CSV com coluna "Email"
 # ================================================================
@@ -17,7 +17,7 @@ param(
 
 # --- Configuracao das Licencas ---
 $SKU_EXCHANGE_STUDENT = "ad2fe44a-915d-4e2b-ade1-6766d50a9d9c"  # EXCHANGESTANDARD_STUDENT
-$SKU_OFFICE_FACULTY = "94763226-9b3c-4e75-a931-5c89701abe66"   # STANDARDWOFFPACK_FACULTY
+$SKU_OFFICE_FACULTY = "78e66a63-337a-4a9a-8959-41c6654dfb56"   # STANDARDWOFFPACK_FACULTY
 
 # --- Validar arquivo CSV ---
 if (!(Test-Path $CsvPath)) {
@@ -37,6 +37,32 @@ if ($DryRun) {
     Write-Host "=============================================="
 }
 
+# --- Verificar licencas disponiveis ---
+Write-Host "Verificando licencas disponiveis no tenant..." -ForegroundColor Cyan
+try {
+    $skuExchange = Get-MgSubscribedSku -All | Where-Object { $_.SkuId -eq $SKU_EXCHANGE_STUDENT }
+    $skuOffice = Get-MgSubscribedSku -All | Where-Object { $_.SkuId -eq $SKU_OFFICE_FACULTY }
+    
+    if ($skuExchange) {
+        $disponivelExchange = $skuExchange.PrepaidUnits.Enabled - $skuExchange.ConsumedUnits
+        Write-Host "  EXCHANGE_STUDENT: $disponivelExchange disponiveis" -ForegroundColor Cyan
+    } else {
+        Write-Host "  [ERRO] EXCHANGE_STUDENT nao encontrado no tenant!" -ForegroundColor Red
+        exit 1
+    }
+    
+    if ($skuOffice) {
+        $disponivelOffice = $skuOffice.PrepaidUnits.Enabled - $skuOffice.ConsumedUnits
+        Write-Host "  OFFICE_FACULTY: $disponivelOffice disponiveis" -ForegroundColor Cyan
+    } else {
+        Write-Host "  [ERRO] OFFICE_FACULTY nao encontrado no tenant!" -ForegroundColor Red
+        exit 1
+    }
+} catch {
+    Write-Host "[AVISO] Erro ao verificar licencas: $($_.Exception.Message)" -ForegroundColor Yellow
+}
+Write-Host "=============================================="
+
 # --- Carregar CSV ---
 Write-Host "Carregando usuarios do CSV..." -ForegroundColor Cyan
 $usuarios = Import-Csv -Path $CsvPath -Encoding UTF8
@@ -49,9 +75,11 @@ Write-Host "=============================================="
 $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $logSucesso = "log_licencas_sucesso_$timestamp.csv"
 $logErro = "log_licencas_erro_$timestamp.csv"
+$logParcial = "log_licencas_parcial_$timestamp.csv"
 
 $sucessos = @()
 $erros = @()
+$parciais = @()
 
 # --- Processar em batches ---
 $dataInicio = Get-Date
@@ -75,6 +103,10 @@ for ($i = 0; $i -lt $totalUsuarios; $i += $TamanhoBatch) {
         
         Write-Host "  [$contador/$totalUsuarios] Processando: $email" -ForegroundColor Gray
         
+        $etapaRemover = $false
+        $etapaAdicionar = $false
+        $licencasRemovidasCount = 0
+        
         try {
             # Buscar usuario
             $mgUser = Get-MgUser -Filter "userPrincipalName eq '$email'" -Property Id,UserPrincipalName,DisplayName,AssignedLicenses -ErrorAction Stop
@@ -84,52 +116,119 @@ for ($i = 0; $i -lt $totalUsuarios; $i += $TamanhoBatch) {
             }
             
             if (!$DryRun) {
-                # Remover TODAS as licencas antigas
+                # === ETAPA 1: REMOVER TODAS AS LICENCAS ===
                 $licencasAtuais = $mgUser.AssignedLicenses
-                $removeLicenses = @()
                 
-                foreach ($lic in $licencasAtuais) {
-                    $removeLicenses += $lic.SkuId
+                if ($licencasAtuais -and $licencasAtuais.Count -gt 0) {
+                    $removeLicenses = @()
+                    foreach ($lic in $licencasAtuais) {
+                        $removeLicenses += $lic.SkuId
+                    }
+                    
+                    Write-Host "    [1/2] Removendo $($removeLicenses.Count) licencas antigas..." -ForegroundColor Gray
+                    
+                    try {
+                        Set-MgUserLicense -UserId $mgUser.Id -AddLicenses @() -RemoveLicenses $removeLicenses -ErrorAction Stop
+                        $etapaRemover = $true
+                        $licencasRemovidasCount = $removeLicenses.Count
+                        Write-Host "    [OK] $licencasRemovidasCount licencas removidas" -ForegroundColor Green
+                        
+                        # AGUARDAR processamento da API
+                        Start-Sleep -Seconds 3
+                        
+                    } catch {
+                        throw "Falha ao remover licencas: $($_.Exception.Message)"
+                    }
+                } else {
+                    Write-Host "    [INFO] Usuario nao tinha licencas" -ForegroundColor Cyan
+                    $etapaRemover = $true
                 }
                 
-                # Adicionar novas licencas
+                # === ETAPA 2: ADICIONAR NOVAS LICENCAS ===
+                Write-Host "    [2/2] Adicionando novas licencas..." -ForegroundColor Gray
+                
                 $addLicenses = @(
-                    @{ SkuId = $SKU_EXCHANGE_STUDENT },
-                    @{ SkuId = $SKU_OFFICE_FACULTY }
+                    @{ SkuId = $SKU_EXCHANGE_STUDENT; DisabledPlans = @() },
+                    @{ SkuId = $SKU_OFFICE_FACULTY; DisabledPlans = @() }
                 )
                 
-                # Aplicar mudancas
-                Set-MgUserLicense -UserId $mgUser.Id -AddLicenses $addLicenses -RemoveLicenses $removeLicenses -ErrorAction Stop
+                try {
+                    Set-MgUserLicense -UserId $mgUser.Id -AddLicenses $addLicenses -RemoveLicenses @() -ErrorAction Stop
+                    $etapaAdicionar = $true
+                    Write-Host "    [OK] 2 novas licencas adicionadas" -ForegroundColor Green
+                    
+                } catch {
+                    throw "Falha ao adicionar licencas: $($_.Exception.Message)"
+                }
                 
-                Write-Host "    [OK] Licencas alteradas com sucesso!" -ForegroundColor Green
+                # === VERIFICAR SE REALMENTE APLICOU ===
+                Start-Sleep -Seconds 2
+                $mgUserVerifica = Get-MgUser -UserId $mgUser.Id -Property AssignedLicenses,AccountEnabled -ErrorAction SilentlyContinue
+                
+                if ($mgUserVerifica.AssignedLicenses.Count -eq 2) {
+                    Write-Host "    [VERIFICADO] Licencas aplicadas com sucesso!" -ForegroundColor Green
+                } else {
+                    Write-Host "    [AVISO] Esperado 2 licencas, encontrado $($mgUserVerifica.AssignedLicenses.Count)" -ForegroundColor Yellow
+                }
+                
+                # === REATIVAR CONTA SE FOI DESABILITADA ===
+                if (!$mgUserVerifica.AccountEnabled) {
+                    Write-Host "    [3/3] Conta foi desabilitada, reativando..." -ForegroundColor Yellow
+                    try {
+                        Update-MgUser -UserId $mgUser.Id -AccountEnabled:$true -ErrorAction Stop
+                        Write-Host "    [OK] Conta reativada!" -ForegroundColor Green
+                    } catch {
+                        Write-Host "    [AVISO] Falha ao reativar: $($_.Exception.Message)" -ForegroundColor Yellow
+                    }
+                }
+                
             } else {
-                Write-Host "    [TESTE] Alteracao simulada (dry-run)" -ForegroundColor Yellow
+                Write-Host "    [TESTE] Remocao e adicao simuladas (dry-run)" -ForegroundColor Yellow
+                $etapaRemover = $true
+                $etapaAdicionar = $true
             }
             
             # Log de sucesso
             $sucessos += [PSCustomObject]@{
                 Email = $email
                 Nome = $mgUser.DisplayName
-                Status = "Sucesso"
+                LicencasRemovidas = if ($DryRun) { "DRY-RUN" } else { $licencasRemovidasCount }
+                LicencasAdicionadas = if ($DryRun) { "DRY-RUN" } else { "2" }
+                Status = "Sucesso completo"
                 Data = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
             }
             
         } catch {
-            Write-Host "    [ERRO] $($_.Exception.Message)" -ForegroundColor Red
+            $erroMsg = $_.Exception.Message
+            Write-Host "    [ERRO] $erroMsg" -ForegroundColor Red
             
-            # Log de erro
-            $erros += [PSCustomObject]@{
-                Email = $email
-                Erro = $_.Exception.Message
-                Data = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+            # Verificar se foi erro parcial
+            if ($etapaRemover -and !$etapaAdicionar) {
+                Write-Host "    [PARCIAL] Licencas removidas mas nao adicionadas!" -ForegroundColor Yellow
+                
+                $parciais += [PSCustomObject]@{
+                    Email = $email
+                    Problema = "Licencas removidas mas falhou ao adicionar novas"
+                    Erro = $erroMsg
+                    Data = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                }
+            } else {
+                # Erro completo
+                $erros += [PSCustomObject]@{
+                    Email = $email
+                    Erro = $erroMsg
+                    EtapaRemover = $etapaRemover
+                    EtapaAdicionar = $etapaAdicionar
+                    Data = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+                }
             }
         }
         
-        Start-Sleep -Milliseconds 100  # Rate limiting
+        Start-Sleep -Milliseconds 200  # Rate limiting aumentado
     }
     
-    Write-Host "[BATCH $batchAtual CONCLUIDO] Aguardando 5 segundos..." -ForegroundColor Cyan
-    Start-Sleep -Seconds 5
+    Write-Host "[BATCH $batchAtual CONCLUIDO] Aguardando 10 segundos..." -ForegroundColor Cyan
+    Start-Sleep -Seconds 10
     $batchAtual++
 }
 
@@ -147,6 +246,12 @@ if ($erros.Count -gt 0) {
     Write-Host "[AVISO] Log de erros: $logErro" -ForegroundColor Yellow
 }
 
+if ($parciais.Count -gt 0) {
+    $parciais | Export-Csv -Path $logParcial -NoTypeInformation -Encoding UTF8
+    Write-Host "[IMPORTANTE] Log de falhas parciais: $logParcial" -ForegroundColor Red
+    Write-Host "Esses usuarios ficaram SEM LICENCA! Execute novamente apenas com eles." -ForegroundColor Red
+}
+
 # --- Estatisticas finais ---
 $dataFim = Get-Date
 $tempo = ($dataFim - $dataInicio).ToString("hh\:mm\:ss")
@@ -155,8 +260,9 @@ Write-Host "`n=============================================="
 Write-Host "RESUMO FINAL" -ForegroundColor Cyan
 Write-Host "=============================================="
 Write-Host "Total processado: $totalUsuarios"
-Write-Host "Sucessos: $($sucessos.Count)" -ForegroundColor Green
-Write-Host "Erros: $($erros.Count)" -ForegroundColor $(if ($erros.Count -gt 0) { "Red" } else { "Green" })
+Write-Host "Sucessos completos: $($sucessos.Count)" -ForegroundColor Green
+Write-Host "Falhas parciais: $($parciais.Count)" -ForegroundColor $(if ($parciais.Count -gt 0) { "Red" } else { "Green" })
+Write-Host "Erros completos: $($erros.Count)" -ForegroundColor $(if ($erros.Count -gt 0) { "Red" } else { "Green" })
 Write-Host "Tempo total: $tempo"
 Write-Host "=============================================="
 
@@ -164,7 +270,12 @@ if ($DryRun) {
     Write-Host "`n[TESTE CONCLUIDO] Execute sem -DryRun para fazer alteracoes reais" -ForegroundColor Yellow
 }
 
+if ($parciais.Count -gt 0) {
+    Write-Host "`n[ACAO NECESSARIA] $($parciais.Count) usuarios ficaram sem licenca!" -ForegroundColor Red
+    Write-Host "Crie um CSV apenas com esses emails e execute o script novamente." -ForegroundColor Yellow
+    Write-Host "Use o arquivo: $logParcial" -ForegroundColor Cyan
+}
+
 # --- Desconectar ---
 Disconnect-MgGraph | Out-Null
 Write-Host "`n[OK] Desconectado do Microsoft Graph" -ForegroundColor Green
-
