@@ -17,15 +17,21 @@ fulano@email.com
 ciclano@eemail.com
 ```
 
+3. Salve os scripts e os arquivos csv na raiz do sistema (C:)
 ---
 
-## 🎯 Script 1: Alterar Licenças (10k usuários)
+## 🎯 Script 1: Alterar Licenças - batch em lotes de 500 - pode deixar o arquivo com todos os usuarios que o script faz em lotes
 
 ### ✅ O que faz:
 - Remove **TODAS** as licenças antigas
 - Adiciona: `EXCHANGESTANDARD_STUDENT` + `STANDARDWOFFPACK_FACULTY`
+- Ativa o usuario
 
 ### 📝 Como usar:
+** Verifique um usuario que tenha as licenças que vai usar pra conferir os SKUs e alterar no script com os valores corretos.
+Connect-MgGraph -Scopes "User.Read.All"
+Get-MgUser -Filter "userPrincipalName eq 'fulano@educararaquara.com'" | 
+  Select-Object DisplayName, AccountEnabled, AssignedLicenses
 
 **Teste primeiro (DRY-RUN):**
 ```powershell
