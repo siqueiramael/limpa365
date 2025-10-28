@@ -28,7 +28,8 @@ ciclano@eemail.com
 - Ativa o usuario
 
 ### 📝 Como usar:
-** Verifique um usuario que tenha as licenças que vai usar pra conferir os SKUs e alterar no script com os valores corretos.
+** Verifique um usuario que tenha as licenças que vai usar pra conferir os SKUs e alterar no script com os valores corretos, altere "fulano@educararaquara.com" para o emaeil correto.
+
 Connect-MgGraph -Scopes "User.Read.All"
 Get-MgUser -Filter "userPrincipalName eq 'fulano@educararaquara.com'" | 
   Select-Object DisplayName, AccountEnabled, AssignedLicenses
