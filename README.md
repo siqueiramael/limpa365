@@ -3,6 +3,7 @@
 ## 📋 Pré-requisitos
 
 1. **Instalar Microsoft.Graph:**
+Usar o Windows PowerShell ou PowerShell 7 (ou mais atual) como administrador
 ```powershell
 Install-Module Microsoft.Graph -Scope CurrentUser -Force
 ```
@@ -228,7 +229,7 @@ Todos os scripts geram 3 tipos de log:
 - Normal para muitos usuários
 
 ### **"FunctionOverflow" ao importar módulos**
-- Feche e reabra o PowerShell
+- Feche e reabra o PowerShell (administrador)
 - Execute apenas 1 script por vez
 
 ---
@@ -287,5 +288,3 @@ Antes de executar em produção:
 - [ ] Sei como reverter (Scripts 2 e 4)
 
 ---
-
-**Bom trabalho! 🚀**
